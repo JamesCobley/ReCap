@@ -82,3 +82,87 @@ plt.savefig(out_png, dpi=300, bbox_inches="tight")
 plt.show()
 
 print(f"\nSaved figure: {out_png}")
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+long_path = "/content/cysteine_feature_annotations_long.csv"
+TOTAL_CYS = 277404
+
+annot_df = pd.read_csv(long_path)
+
+req = {"accession", "cys_position", "feature_type"}
+missing = req - set(annot_df.columns)
+if missing:
+    raise ValueError(f"Missing required columns: {missing}. Found: {annot_df.columns.tolist()}")
+
+keep_features = ["Active site", "Binding site", "Disulfide bond", "Zinc finger"]
+tmp = annot_df[annot_df["feature_type"].isin(keep_features)].copy()
+
+tmp["cys_id"] = (
+    tmp["accession"].astype(str) + "|" +
+    tmp["cys_position"].astype(str)
+)
+
+# Priority to avoid double counting
+priority = {
+    "Active site": 1,
+    "Binding site": 2,
+    "Disulfide bond": 3,
+    "Zinc finger": 4
+}
+
+tmp["priority"] = tmp["feature_type"].map(priority)
+
+assigned = (
+    tmp.sort_values(["cys_id", "priority"])
+       .drop_duplicates("cys_id", keep="first")
+       .copy()
+)
+
+counts = assigned["feature_type"].value_counts()
+
+active_n = int(counts.get("Active site", 0))
+binding_n = int(counts.get("Binding site", 0))
+disulfide_n = int(counts.get("Disulfide bond", 0))
+zf_n = int(counts.get("Zinc finger", 0))
+
+annotated_total = len(assigned)
+unannotated_n = TOTAL_CYS - annotated_total
+
+summary = pd.DataFrame({
+    "Category": [
+        "Active site",
+        "Binding site",
+        "Disulfide bond",
+        "Zinc finger region",
+        "Functionally unannotated"
+    ],
+    "Count": [
+        active_n,
+        binding_n,
+        disulfide_n,
+        zf_n,
+        unannotated_n
+    ]
+})
+
+summary["Percent"] = summary["Count"] / TOTAL_CYS * 100
+
+print(summary)
+
+fig, ax = plt.subplots(figsize=(9, 9))
+ax.pie(
+    summary["Count"],
+    labels=[f"{c}\n({n:,})" for c, n in zip(summary["Category"], summary["Count"])],
+    autopct=lambda p: f"{p:.1f}%",
+    startangle=90
+)
+ax.set_title("Mouse cysteine annotation classes")
+plt.tight_layout()
+
+out_png = "/content/cysteine_annotation_classes_pie_300dpi.png"
+plt.savefig(out_png, dpi=300, bbox_inches="tight")
+plt.show()
+
+print(f"\nSaved figure: {out_png}")
